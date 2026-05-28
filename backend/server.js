@@ -3,12 +3,10 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
-const xss = require('xss-clean');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// 🔐 בדיקת משתני סביבה חיוניים בהפעלה
 if (!process.env.MONGO_URI) {
     console.error('FATAL: MONGO_URI is not defined. Exiting.');
     process.exit(1);
@@ -22,16 +20,13 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',')
     : [];
 
-// Middleware 
 app.use(helmet());
-app.use(xss());
 app.use(cors({
     origin: ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS : false,
     methods: ['GET', 'POST'],
 }));
-app.use(express.json({ limit: '10kb' })); // הגבלת גודל payload
+app.use(express.json({ limit: '10kb' }));
 
-//  חיבור ל-MongoDB Atlas
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('Successfully connected to MongoDB Atlas! 🎉'))
     .catch((err) => {
@@ -47,21 +42,21 @@ const sensorReadingSchema = new mongoose.Schema({
 
 const Reading = mongoose.model('Reading', sensorReadingSchema);
 
-// פונקציית ניקוי פנימית ומאובטחת למניעת NoSQL Injection
 const sanitizeInput = (obj) => {
     if (typeof obj !== 'object' || obj === null) return obj;
     const clean = {};
     for (let key in obj) {
         if (Object.prototype.hasOwnProperty.call(obj, key)) {
-            const safeKey = key.replace(/\$/g, '');
+            const safeKey = key.replace(/[$<>]/g, '');
             const val = obj[key];
-            clean[safeKey] = typeof val === 'string' ? val.replace(/\$/g, '') : val;
+            clean[safeKey] = typeof val === 'string'
+                ? val.replace(/[$<>"'`]/g, '')
+                : val;
         }
     }
     return clean;
 };
 
-// 2. ה-Endpoint ל-POST
 app.post('/update-sensor', async (req, res) => {
     try {
         const clientApiKey = req.header('X-API-KEY');
@@ -69,7 +64,6 @@ app.post('/update-sensor', async (req, res) => {
             return res.status(401).json({ error: "Unauthorized" });
         }
 
-        // ניקוי הקלט באופן ידני ומאובטח
         const cleanBody = sanitizeInput(req.body);
         const temperature = parseFloat(cleanBody.temperature);
         const humidity    = parseFloat(cleanBody.humidity);
@@ -88,7 +82,6 @@ app.post('/update-sensor', async (req, res) => {
     }
 });
 
-// 3. ה-Endpoint לשליפת נתונים
 app.get('/sensor-history', async (req, res) => {
     try {
         const history = await Reading.find()
