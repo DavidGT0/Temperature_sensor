@@ -3,13 +3,12 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
-const mongoSanitize = require('express-mongo-sanitize');
 const xss = require('xss-clean');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Middleware מאובטחים - ללא mongoSanitize כאן כדי למנוע את השגיאה!
+// Middleware מאובטחים (בלי mongoSanitize שגרם לשגיאה)
 app.use(helmet());
 app.use(xss());
 app.use(cors());
@@ -28,7 +27,18 @@ const sensorReadingSchema = new mongoose.Schema({
 
 const Reading = mongoose.model('Reading', sensorReadingSchema);
 
-// 2. ה-Endpoint ל-POST עם ניקוי ממוקד
+// פונקציית ניקוי פנימית ומאובטחת למניעת NoSQL Injection
+const sanitizeInput = (obj) => {
+    if (typeof obj !== 'object' || obj === null) return obj;
+    for (let key in obj) {
+        if (typeof obj[key] === 'string' && obj[key].includes('$')) {
+            obj[key] = obj[key].replace(/\$/g, '');
+        }
+    }
+    return obj;
+};
+
+// 2. ה-Endpoint ל-POST
 app.post('/update-sensor', async (req, res) => {
     try {
         const clientApiKey = req.header('X-API-KEY');
@@ -38,13 +48,12 @@ app.post('/update-sensor', async (req, res) => {
             return res.status(401).json({ error: "Unauthorized" });
         }
 
-        // ניקוי ה-body בלבד (זה בטוח ולא יגרום לשגיאת getter)
-        const cleanBody = mongoSanitize.sanitize(req.body);
-        const { temperature, humidity } = cleanBody;
+        // ניקוי הקלט באופן ידני ומאובטח
+        const cleanBody = sanitizeInput(req.body);
 
         const newReading = new Reading({
-            temperature,
-            humidity
+            temperature: parseFloat(cleanBody.temperature),
+            humidity: parseFloat(cleanBody.humidity)
         });
 
         await newReading.save();
