@@ -8,21 +8,41 @@ const xss = require('xss-clean');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Middleware מאובטחים (בלי mongoSanitize שגרם לשגיאה)
+// 🔐 בדיקת משתני סביבה חיוניים בהפעלה
+if (!process.env.MONGO_URI) {
+    console.error('FATAL: MONGO_URI is not defined. Exiting.');
+    process.exit(1);
+}
+if (!process.env.SECRET_API_KEY) {
+    console.error('FATAL: SECRET_API_KEY is not defined. Exiting.');
+    process.exit(1);
+}
+
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',')
+    : [];
+
+// Middleware 
 app.use(helmet());
 app.use(xss());
-app.use(cors());
-app.use(express.json());
+app.use(cors({
+    origin: ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS : false,
+    methods: ['GET', 'POST'],
+}));
+app.use(express.json({ limit: '10kb' })); // הגבלת גודל payload
 
-// 1. חיבור ל-MongoDB Atlas
+//  חיבור ל-MongoDB Atlas
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('Successfully connected to MongoDB Atlas! 🎉'))
-    .catch((err) => console.error('MongoDB connection error: ❌', err));
+    .catch((err) => {
+        console.error('MongoDB connection error: ❌', err);
+        process.exit(1);
+    });
 
 const sensorReadingSchema = new mongoose.Schema({
-    temperature: Number,
-    humidity: Number,
-    timestamp: { type: Date, default: Date.now }
+    temperature: { type: Number, required: true, min: -100, max: 150 },
+    humidity:    { type: Number, required: true, min: 0, max: 100 },
+    timestamp:   { type: Date, default: Date.now }
 });
 
 const Reading = mongoose.model('Reading', sensorReadingSchema);
@@ -30,32 +50,35 @@ const Reading = mongoose.model('Reading', sensorReadingSchema);
 // פונקציית ניקוי פנימית ומאובטחת למניעת NoSQL Injection
 const sanitizeInput = (obj) => {
     if (typeof obj !== 'object' || obj === null) return obj;
+    const clean = {};
     for (let key in obj) {
-        if (typeof obj[key] === 'string' && obj[key].includes('$')) {
-            obj[key] = obj[key].replace(/\$/g, '');
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
+            const safeKey = key.replace(/\$/g, '');
+            const val = obj[key];
+            clean[safeKey] = typeof val === 'string' ? val.replace(/\$/g, '') : val;
         }
     }
-    return obj;
+    return clean;
 };
 
 // 2. ה-Endpoint ל-POST
 app.post('/update-sensor', async (req, res) => {
     try {
         const clientApiKey = req.header('X-API-KEY');
-        const SERVER_SECRET_KEY = process.env.SECRET_API_KEY || "MySuperSecretKey123";
-
-        if (!clientApiKey || clientApiKey !== SERVER_SECRET_KEY) {
+        if (!clientApiKey || clientApiKey !== process.env.SECRET_API_KEY) {
             return res.status(401).json({ error: "Unauthorized" });
         }
 
         // ניקוי הקלט באופן ידני ומאובטח
         const cleanBody = sanitizeInput(req.body);
+        const temperature = parseFloat(cleanBody.temperature);
+        const humidity    = parseFloat(cleanBody.humidity);
 
-        const newReading = new Reading({
-            temperature: parseFloat(cleanBody.temperature),
-            humidity: parseFloat(cleanBody.humidity)
-        });
+        if (isNaN(temperature) || isNaN(humidity)) {
+            return res.status(400).json({ error: "Invalid sensor values" });
+        }
 
+        const newReading = new Reading({ temperature, humidity });
         await newReading.save();
         res.status(201).json({ message: "Data saved successfully!" });
 
