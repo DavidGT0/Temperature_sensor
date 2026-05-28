@@ -1,12 +1,19 @@
 ﻿require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
-const cors = require('cors'); 
+const cors = require('cors');
+const helmet = require('helmet'); // <-- חדש: הגנת כותרות HTTP
+const mongoSanitize = require('express-mongo-sanitize'); // <-- חדש: מניעת NoSQL Injection
+const xss = require('xss-clean'); // <-- חדש: הגנת XSS בקלט משתמש
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-app.use(cors()); 
+// השחלת שכבות האבטחה (Middlewares) - רצות על כל בקשה שנכנסת לשרת
+app.use(helmet()); // מקשיח את ה-Headers של השרת
+app.use(mongoSanitize()); // מוחק תווים מיוחדים של שאילתות מה-body (מגן על ה-DB)
+app.use(xss()); // מנקה תגיות HTML/JS זדוניות שנשלחות בטקסט
+app.use(cors());
 app.use(express.json());
 
 // 1. חיבור ל-MongoDB Atlas
@@ -14,36 +21,43 @@ mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('Successfully connected to MongoDB Atlas! 🎉'))
     .catch((err) => console.error('MongoDB connection error: ❌', err));
 
-// 2. הגדרת ה-Schema (איך יראה מסמך של קריאת חיישן בבסיס הנתונים)
+// 2. הגדרת ה-Schema והמודל
 const sensorReadingSchema = new mongoose.Schema({
     temperature: Number,
     humidity: Number,
-    timestamp: { type: Date, default: Date.now } // שמירת הזמן הגולמי הבינלאומי (הכי מקצועי ל-DB)
+    timestamp: { type: Date, default: Date.now }
 });
 
-// יצירת המודל מתוך הסכמה
 const Reading = mongoose.model('Reading', sensorReadingSchema);
 
-// 3. ה-Endpoint הקיים שמעודכן לשמור לתוך ה-DB
 app.post('/update-sensor', async (req, res) => {
     try {
+        // שליפת מפתח האבטחה מתוך ה-Headers של הבקשה
+        const clientApiKey = req.header('X-API-KEY');
+
+        // שליפת המפתח הסודי שהגדרת בשרת (אם לא מוגדר ב-env, ישתמש בברירת מחדל לבדיקות)
+        const SERVER_SECRET_KEY = process.env.SECRET_API_KEY || "MySuperSecretKey123";
+
+        // חסימה מיידית במידה והמפתח חסר או לא תואם
+        if (!clientApiKey || clientApiKey !== SERVER_SECRET_KEY) {
+            console.log(`⚠️ Blocked unauthorized attempt to POST data from IP: ${req.ip}`);
+            return res.status(401).json({ error: "Unauthorized: Invalid or missing API Key" });
+        }
+
         const { temperature, humidity } = req.body;
 
-        // יצירת מסמך חדש מנתוני החיישן
+        // יצירת מסמך חדש ושמירה ב-DB
         const newReading = new Reading({
             temperature: temperature,
             humidity: humidity
         });
 
-        // שמירה פיזית ב-Database בענן
         await newReading.save();
 
-        // הדפסה מעוצבת ל-Logs של השרת
         console.log(`\n--- [New Reading Saved to DB] ---`);
         console.log(`Temp: ${temperature}°C | Humidity: ${humidity}%`);
         console.log(`Logged at: ${new Date().toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour12: false })}`);
 
-        // החזרת תשובת הצלחה לבקר ה-ESP32
         res.status(201).json({ message: "Data saved successfully!" });
 
     } catch (error) {
@@ -52,15 +66,14 @@ app.post('/update-sensor', async (req, res) => {
     }
 });
 
-// ה-Endpoint החדש ששולף נתונים מה-DB בשביל הריאקט
+//  ה-Endpoint לשליפת הנתונים בשביל הריאקט (נשאר פתוח כדי שהאתר יוכל לקרוא בחופשיות)
 app.get('/sensor-history', async (req, res) => {
     try {
-        // שולף את 20 הקריאות האחרונות, ומסדר אותן מהישן לחדש (כדי שהגרף יזרום משמאל לימין)
         const history = await Reading.find()
-            .sort({ timestamp: -1 }) // קודם כל מביא את הכי חדשים
-            .limit(20);              // מגביל ל-20 קריאות
+            .sort({ timestamp: -1 })
+            .limit(20);
 
-        res.json(history.reverse()); // הופך את הסדר כדי שיוצג כרונולוגית בגרף
+        res.json(history.reverse());
     } catch (error) {
         console.error("Error fetching history:", error);
         res.status(500).json({ error: "Failed to fetch sensor history" });
@@ -69,7 +82,7 @@ app.get('/sensor-history', async (req, res) => {
 
 app.listen(port, () => {
     console.log(`=================================`);
-    console.log(` Sensor API Gateway is ACTIVE`);
+    console.log(` Secure Sensor API Gateway ACTIVE`);
     console.log(` Listening on port: ${port}`);
     console.log(`=================================`);
 });

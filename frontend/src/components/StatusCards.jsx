@@ -1,17 +1,21 @@
-﻿
-export default function StatusCards({ latest }) {
+﻿export default function StatusCards({ latest }) {
     return (
-        <div className="cards-grid">
-            <div className="card temp-card">
-                <div className="card-icon">🌡️</div>
-                <h3>טמפרטורה נוכחית</h3>
-                <div className="value">{latest.temperature}°C</div>
+        <section className="status-cards-container">
+            <h2 style={{ textAlign: 'center', marginBottom: '16px' }}>מצב נוכחי</h2>
+            <div className="status-cards">
+                <div className="card card-temp-hot">
+                    <h3>טמפרטורה</h3>
+                    <p style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#f87171' }}>
+                        {latest.temperature}°C
+                    </p>
+                </div>
+                <div className="card card-hum-wet">
+                    <h3>לחות</h3>
+                    <p style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#38bdf8' }}>
+                        {latest.humidity}%
+                    </p>
+                </div>
             </div>
-            <div className="card humidity-card">
-                <div className="card-icon">💧</div>
-                <h3>לחות נוכחית</h3>
-                <div className="value">{latest.humidity}%</div>
-            </div>
-        </div>
+        </section>
     );
 }

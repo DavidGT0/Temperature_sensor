@@ -15,6 +15,9 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "mongoose": "^9.6.3"
+    "express-mongo-sanitize": "^2.2.0",
+    "helmet": "^8.2.0",
+    "mongoose": "^9.6.3",
+    "xss-clean": "^0.1.4"
   }
 }
