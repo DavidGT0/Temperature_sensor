@@ -2,16 +2,16 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const helmet = require('helmet'); // <-- חדש: הגנת כותרות HTTP
-const mongoSanitize = require('express-mongo-sanitize'); // <-- חדש: מניעת NoSQL Injection
-const xss = require('xss-clean'); // <-- חדש: הגנת XSS בקלט משתמש
+const helmet = require('helmet');
+const mongoSanitize = require('express-mongo-sanitize');
+const xss = require('xss-clean');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// השחלת שכבות האבטחה (Middlewares) - רצות על כל בקשה שנכנסת לשרת
-app.use(helmet()); // מקשיח את ה-Headers של השרת
-app.use(xss()); // מנקה תגיות HTML/JS זדוניות שנשלחות בטקסט
+// Middleware מאובטחים - ללא mongoSanitize כאן כדי למנוע את השגיאה!
+app.use(helmet());
+app.use(xss());
 app.use(cors());
 app.use(express.json());
 
@@ -20,7 +20,6 @@ mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('Successfully connected to MongoDB Atlas! 🎉'))
     .catch((err) => console.error('MongoDB connection error: ❌', err));
 
-// 2. הגדרת ה-Schema והמודל
 const sensorReadingSchema = new mongoose.Schema({
     temperature: Number,
     humidity: Number,
@@ -29,8 +28,7 @@ const sensorReadingSchema = new mongoose.Schema({
 
 const Reading = mongoose.model('Reading', sensorReadingSchema);
 
-const mongoSanitize = require('express-mongo-sanitize'); // השאר את הייבוא למעלה
-
+// 2. ה-Endpoint ל-POST עם ניקוי ממוקד
 app.post('/update-sensor', async (req, res) => {
     try {
         const clientApiKey = req.header('X-API-KEY');
@@ -40,35 +38,34 @@ app.post('/update-sensor', async (req, res) => {
             return res.status(401).json({ error: "Unauthorized" });
         }
 
-        // --- הנה הניקוי הנכון ---
-        // מנקה רק את ה-body של הבקשה הנוכחית
+        // ניקוי ה-body בלבד (זה בטוח ולא יגרום לשגיאת getter)
         const cleanBody = mongoSanitize.sanitize(req.body);
         const { temperature, humidity } = cleanBody;
 
         const newReading = new Reading({
-            temperature: temperature,
-            humidity: humidity
+            temperature,
+            humidity
         });
 
         await newReading.save();
         res.status(201).json({ message: "Data saved successfully!" });
 
     } catch (error) {
+        console.error("Save error:", error);
         res.status(500).json({ error: "Failed to save data" });
     }
 });
 
-//  ה-Endpoint לשליפת הנתונים בשביל הריאקט (נשאר פתוח כדי שהאתר יוכל לקרוא בחופשיות)
+// 3. ה-Endpoint לשליפת נתונים
 app.get('/sensor-history', async (req, res) => {
     try {
         const history = await Reading.find()
             .sort({ timestamp: -1 })
             .limit(20);
-
         res.json(history.reverse());
     } catch (error) {
-        console.error("Error fetching history:", error);
-        res.status(500).json({ error: "Failed to fetch sensor history" });
+        console.error("Fetch error:", error);
+        res.status(500).json({ error: "Failed to fetch history" });
     }
 });
 
