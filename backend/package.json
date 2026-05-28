@@ -2,7 +2,7 @@
   "name": "node_js",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -16,7 +16,6 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "helmet": "^8.2.0",
-    "mongoose": "^9.6.3",
-    "xss-clean": "^0.1.4"
+    "mongoose": "^9.6.3"
   }
 }
