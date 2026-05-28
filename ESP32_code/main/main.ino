@@ -36,6 +36,7 @@ void loop() {
     
     // התחלת תקשורת מול הכתובת המאובטחת של השרת שלך ב-Render
     http.begin("https://temperature-sensor-rjj5.onrender.com/update-sensor");
+    http.addHeader("Content-Type", "application/json");
     http.addHeader("X-API-KEY", SECRET_API_KEY);
 
     float h = dht.getHumidity();

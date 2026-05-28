@@ -64,6 +64,10 @@ app.post('/update-sensor', async (req, res) => {
             return res.status(401).json({ error: "Unauthorized" });
         }
 
+        if (!req.body || typeof req.body !== 'object') {
+            return res.status(400).json({ error: "Invalid or missing JSON body" });
+        }
+
         const cleanBody = sanitizeInput(req.body);
         const temperature = parseFloat(cleanBody.temperature);
         const humidity    = parseFloat(cleanBody.humidity);
