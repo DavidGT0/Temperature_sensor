@@ -6,7 +6,7 @@ import SensorChart from './components/SensorChart';
 import Extremes from './components/Extremes';
 import './App.css';
 
-const RENDER_SERVER_URL = "https://your-service-name.onrender.com";
+const RENDER_SERVER_URL = "https://temperature-sensor-rjj5.onrender.com/";
 
 function App() {
     const [rawData, setRawData] = useState([]);
