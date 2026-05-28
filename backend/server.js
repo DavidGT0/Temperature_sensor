@@ -11,7 +11,6 @@ const port = process.env.PORT || 3000;
 
 // השחלת שכבות האבטחה (Middlewares) - רצות על כל בקשה שנכנסת לשרת
 app.use(helmet()); // מקשיח את ה-Headers של השרת
-app.use(mongoSanitize()); // מוחק תווים מיוחדים של שאילתות מה-body (מגן על ה-DB)
 app.use(xss()); // מנקה תגיות HTML/JS זדוניות שנשלחות בטקסט
 app.use(cors());
 app.use(express.json());
@@ -30,39 +29,32 @@ const sensorReadingSchema = new mongoose.Schema({
 
 const Reading = mongoose.model('Reading', sensorReadingSchema);
 
+const mongoSanitize = require('express-mongo-sanitize'); // השאר את הייבוא למעלה
+
 app.post('/update-sensor', async (req, res) => {
     try {
-        // שליפת מפתח האבטחה מתוך ה-Headers של הבקשה
         const clientApiKey = req.header('X-API-KEY');
-
-        // שליפת המפתח הסודי שהגדרת בשרת (אם לא מוגדר ב-env, ישתמש בברירת מחדל לבדיקות)
         const SERVER_SECRET_KEY = process.env.SECRET_API_KEY || "MySuperSecretKey123";
 
-        // חסימה מיידית במידה והמפתח חסר או לא תואם
         if (!clientApiKey || clientApiKey !== SERVER_SECRET_KEY) {
-            console.log(`⚠️ Blocked unauthorized attempt to POST data from IP: ${req.ip}`);
-            return res.status(401).json({ error: "Unauthorized: Invalid or missing API Key" });
+            return res.status(401).json({ error: "Unauthorized" });
         }
 
-        const { temperature, humidity } = req.body;
+        // --- הנה הניקוי הנכון ---
+        // מנקה רק את ה-body של הבקשה הנוכחית
+        const cleanBody = mongoSanitize.sanitize(req.body);
+        const { temperature, humidity } = cleanBody;
 
-        // יצירת מסמך חדש ושמירה ב-DB
         const newReading = new Reading({
             temperature: temperature,
             humidity: humidity
         });
 
         await newReading.save();
-
-        console.log(`\n--- [New Reading Saved to DB] ---`);
-        console.log(`Temp: ${temperature}°C | Humidity: ${humidity}%`);
-        console.log(`Logged at: ${new Date().toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour12: false })}`);
-
         res.status(201).json({ message: "Data saved successfully!" });
 
     } catch (error) {
-        console.error("Error saving data:", error);
-        res.status(500).json({ error: "Failed to save data to database" });
+        res.status(500).json({ error: "Failed to save data" });
     }
 });
 
