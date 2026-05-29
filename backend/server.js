@@ -88,9 +88,40 @@ app.post('/update-sensor', async (req, res) => {
 
 app.get('/sensor-history', async (req, res) => {
     try {
-        const history = await Reading.find()
+        const { range, start, end } = req.query;
+        let filter = {};
+        const now = new Date();
+
+        // מקרה 1: המשתמש בחר טווח מותאם אישית עם תאריכים ספציפיים
+        if (start || end) {
+            filter.timestamp = {};
+            if (start) filter.timestamp.$gte = new Date(start);
+            if (end) filter.timestamp.$lte = new Date(end);
+        }
+        // מקרה 2: שימוש בכפתורים מהירים (שבוע, חודש) או דיפולט של 24 שעות
+        else {
+            let timeWindow = new Date();
+
+            if (range === '7d') {
+                // שבוע אחרון
+                timeWindow.setDate(now.getDate() - 7);
+            } else if (range === '30d') {
+                // חודש אחרון
+                timeWindow.setDate(now.getDate() - 30);
+            } else {
+                // ברירת מחדל: 24 השעות האחרונות (אם לא נבחר range או start/end)
+                timeWindow.setHours(now.getHours() - 24);
+            }
+
+            // מסנן את כל הדגימות שזמנן גדול או שווה לזמן שחושב
+            filter.timestamp = { $gte: timeWindow };
+        }
+
+        // שליפת הנתונים לפי המסנן. 
+        const history = await Reading.find(filter)
             .sort({ timestamp: -1 })
-            .limit(20);
+            .limit(5000);
+
         res.json(history.reverse());
     } catch (error) {
         console.error("Fetch error:", error);

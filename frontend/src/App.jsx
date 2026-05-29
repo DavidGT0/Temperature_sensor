@@ -1,5 +1,5 @@
 import {useState, useEffect} from 'react';
-import Navbar from './components/Navbar'; // <-- הייבוא החדש
+import Navbar from './components/Navbar';
 import StatusCards from './components/StatusCards';
 import FilterSelector from './components/FilterSelector';
 import SensorChart from './components/SensorChart';
@@ -15,63 +15,65 @@ function App() {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
 
+    // משיכת נתונים מחדש בכל פעם שהפילטר משתנה
     useEffect(() => {
         const fetchHistory = async () => {
             try {
-                const res = await fetch(`${RENDER_SERVER_URL}/sensor-history`);
-                setRawData(await res.json());
+                setLoading(true); // מראה טעינה במעבר בין תצוגות
+                let url = `${RENDER_SERVER_URL}/sensor-history`;
+
+                // בניית ה-URL עם הפרמטרים שהשרת שלנו מצפה לקבל עכשיו
+                if (filterType === 'week') {
+                    url += '?range=7d';
+                } else if (filterType === 'month') {
+                    url += '?range=30d';
+                } else if (filterType === 'custom' && startDate && endDate) {
+                    // מוסיף שעות מדויקות להתחלה וסוף היום
+                    url += `?start=${startDate}T00:00:00Z&end=${endDate}T23:59:59Z`;
+                }
+
+                const res = await fetch(url);
+                const data = await res.json();
+                setRawData(data);
                 setLoading(false);
             } catch (err) {
                 console.error("Error:", err);
+                setLoading(false);
             }
         };
+
         fetchHistory();
         const interval = setInterval(fetchHistory, 300000);
         return () => clearInterval(interval);
-    }, []);
 
-    if (loading) return <div className="loading">מתחבר לשרת ושולף נתונים... ☁️</div>;
+        // עכשיו ה-useEffect רץ מחדש ברגע שאחד מהמשתנים האלה משתנה!
+    }, [filterType, startDate, endDate]);
 
-    // עיבוד הנתונים דינמית
-    const cutoffDate = new Date();
-    if (filterType === 'day') cutoffDate.setHours(cutoffDate.getHours() - 24);
-    else if (filterType === 'week') cutoffDate.setDate(cutoffDate.getDate() - 7);
-    else if (filterType === 'month') cutoffDate.setDate(cutoffDate.getDate() - 30);
+    if (loading && rawData.length === 0) return <div className="loading">מתחבר לשרת ושולף נתונים... ☁️</div>;
 
-    const filteredData = rawData
-        .filter(item => {
-            const itemDate = new Date(item.timestamp);
-            if (filterType === 'custom') {
-                if (!startDate) return true;
-                const start = new Date(startDate).setHours(0, 0, 0, 0);
-                const end = endDate ? new Date(endDate).setHours(23, 59, 59, 999) : new Date();
-                return itemDate >= start && itemDate <= end;
-            }
-            return itemDate >= cutoffDate;
-        })
-        .map(item => {
-            const d = new Date(item.timestamp);
-            const time = d.toLocaleTimeString('he-IL', {hour: '2-digit', minute: '2-digit'});
-            return {...item,
-                time: filterType === 'day' ? time : `${d.toLocaleDateString('he-IL', {
-                    month: '2-digit',
-                    day: '2-digit'
-                })} ${time}`
-            };
-        });
+    // השרת כבר סינן את התאריכים! כל מה שנשאר לריאקט לעשות זה לעצב את הטקסט של השעה
+    const formattedData = rawData.map(item => {
+        const d = new Date(item.timestamp);
+        const time = d.toLocaleTimeString('he-IL', {hour: '2-digit', minute: '2-digit'});
+        return {
+            ...item,
+            time: filterType === 'day' ? time : `${d.toLocaleDateString('he-IL', {
+                month: '2-digit',
+                day: '2-digit'
+            })} ${time}`
+        };
+    });
 
     const latestReading = rawData[rawData.length - 1] || {temperature: '--', humidity: '--'};
 
     return (
         <>
-            <Navbar/> {/* ה-Navbar יושב מחוץ לקונטיינר כדי להיות קבוע בראש המסך */}
-
+            <Navbar/>
             <div className="dashboard-container">
                 <header className="dashboard-header">
                     <h1>לוח בקרה חכם - IoT Temperature</h1>
                 </header>
 
-                {/* הוספת ה-IDs המדויקים בשביל הניווט החלק */}
                 <div id="status"><StatusCards latest={latestReading}/></div>
 
                 <div id="filters">
@@ -82,8 +84,9 @@ function App() {
                     />
                 </div>
 
-                <div id="chart"><SensorChart data={filteredData}/></div>
-                <div id="extremes"><Extremes data={filteredData} filterType={filterType}/></div>
+                {/* שים לב שהעברנו את formattedData במקום filteredData (שנמחק) */}
+                <div id="chart"><SensorChart data={formattedData}/></div>
+                <div id="extremes"><Extremes data={formattedData} filterType={filterType}/></div>
             </div>
         </>
     );
